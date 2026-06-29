@@ -1,0 +1,107 @@
+[
+  {
+    "id": "db-timeout-001",
+    "title": "The database stopped responding",
+    "difficulty": "beginner",
+    "framework": "generic",
+    "hint": "Look at how many times the same error appears, and what happened just before it.",
+    "log_text": "2026-06-09 09:00:01 INFO Server started on port 8000\n2026-06-09 09:00:05 INFO Database connection established\n2026-06-09 09:01:12 WARNING Disk usage at 82%\n2026-06-09 09:02:08 ERROR Database connection timed out\n2026-06-09 09:02:10 ERROR Database connection timed out\n2026-06-09 09:02:12 ERROR Database connection timed out\n2026-06-09 09:03:00 INFO User login successful\n2026-06-09 09:04:18 WARNING High memory usage detected\n2026-06-09 09:05:22 ERROR Authentication failed for user admin\n2026-06-09 09:08:14 ERROR Connection refused by database host\n2026-06-09 09:10:30 WARNING Disk usage at 82%",
+    "root_cause": "The database server stopped accepting connections, causing repeated timeouts.",
+    "explanation": "The log shows the database connected successfully at startup, but then 3 timeout errors appeared in quick succession at 09:02. Shortly after, the connection was refused entirely at 09:08, which means the database server likely crashed or became unreachable. The authentication failure at 09:05 is probably a side effect — when the database is down, login checks also fail.",
+    "fix_steps": [
+      "Check if the database service is running on the database host.",
+      "Look at the database server's own logs for crash reasons or out-of-memory errors.",
+      "Check network connectivity between your app server and the database host.",
+      "Restart the database service if it has crashed, then monitor for recurrence."
+    ],
+    "learn_more": [
+      {"term": "Connection timeout", "explanation": "The app tried to reach the database but gave up waiting after a set time limit. Like calling someone and hanging up after 30 rings."},
+      {"term": "Connection refused", "explanation": "The database actively rejected the connection. This usually means the service is not running at all."},
+      {"term": "Connection pool", "explanation": "A set of pre-made database connections your app reuses. When the database goes down, the whole pool becomes unusable."}
+    ]
+  },
+  {
+    "id": "auth-fail-001",
+    "title": "Users cannot log in",
+    "difficulty": "beginner",
+    "framework": "generic",
+    "hint": "Pay attention to what changed just before the login failures started.",
+    "log_text": "2026-06-10 08:00:01 INFO Application started\n2026-06-10 08:00:03 INFO Connected to auth service\n2026-06-10 08:15:22 INFO User alice logged in successfully\n2026-06-10 08:16:05 INFO User bob logged in successfully\n2026-06-10 09:00:00 INFO Config file reloaded\n2026-06-10 09:00:01 WARNING JWT secret key changed in config\n2026-06-10 09:01:10 ERROR Authentication failed for user alice\n2026-06-10 09:01:14 ERROR Authentication failed for user bob\n2026-06-10 09:01:18 ERROR Authentication failed for user charlie\n2026-06-10 09:02:00 ERROR Invalid token signature\n2026-06-10 09:02:01 ERROR Invalid token signature\n2026-06-10 09:02:02 ERROR Invalid token signature",
+    "root_cause": "The JWT secret key was changed in config, which invalidated all existing user tokens.",
+    "explanation": "Users logged in fine until 09:00, when the config was reloaded and the JWT secret key changed. Any token that was issued with the old secret key is now invalid because the signature no longer matches. Every user who had an active session got logged out at once. This is a classic mistake when rotating secret keys without also invalidating or migrating existing sessions.",
+    "fix_steps": [
+      "Revert the JWT secret key to the previous value immediately to restore logins.",
+      "Plan a proper key rotation: issue new tokens before changing the secret, then change it with a grace period.",
+      "Add monitoring for sudden spikes in authentication failures to catch this faster next time.",
+      "Consider using key IDs (kid) in your JWT header so multiple keys can be valid at the same time during rotation."
+    ],
+    "learn_more": [
+      {"term": "JWT (JSON Web Token)", "explanation": "A small encrypted package your app sends to users after login. They send it back on every request to prove who they are."},
+      {"term": "Token signature", "explanation": "A mathematical seal on the JWT made using the secret key. If the key changes, the seal no longer matches and the token is rejected."},
+      {"term": "Key rotation", "explanation": "Changing your secret keys periodically for security. Must be done carefully so existing users are not suddenly logged out."}
+    ]
+  },
+  {
+    "id": "disk-full-001",
+    "title": "The app stopped writing files",
+    "difficulty": "beginner",
+    "framework": "generic",
+    "hint": "Watch the disk usage warnings and notice when they hit 100%.",
+    "log_text": "2026-06-11 10:00:00 INFO Application started\n2026-06-11 10:15:00 WARNING Disk usage at 75%\n2026-06-11 11:00:00 WARNING Disk usage at 85%\n2026-06-11 11:30:00 WARNING Disk usage at 92%\n2026-06-11 11:45:00 WARNING Disk usage at 97%\n2026-06-11 11:50:12 ERROR Failed to write log file: No space left on device\n2026-06-11 11:50:13 ERROR Failed to save user upload: No space left on device\n2026-06-11 11:50:14 ERROR Database write failed: disk full\n2026-06-11 11:50:15 ERROR Application cannot continue: critical storage failure\n2026-06-11 11:51:00 CRITICAL Application crashed",
+    "root_cause": "The disk filled up completely, causing all write operations including database writes to fail.",
+    "explanation": "The warnings clearly show disk usage climbing from 75% to 97% over 90 minutes. When it hit 100%, every write operation failed simultaneously — log files, user uploads, and database writes all use disk space. The application then crashed because it could not even write its own error logs. The warning signs were there 90 minutes before the crash.",
+    "fix_steps": [
+      "Free up disk space immediately: delete old log files, temporary files, and unnecessary uploads.",
+      "Restart the application after freeing space.",
+      "Set up automatic log rotation so logs do not grow indefinitely.",
+      "Add a disk space alert at 80% so you can act before it hits 100%."
+    ],
+    "learn_more": [
+      {"term": "No space left on device", "explanation": "The operating system error when a disk is 100% full. Any write operation will fail with this error."},
+      {"term": "Log rotation", "explanation": "Automatically archiving and deleting old log files so they do not fill the disk. Usually configured to keep the last 7 or 30 days."},
+      {"term": "CRITICAL log level", "explanation": "The highest severity level. It means the application cannot continue and will crash or needs immediate attention."}
+    ]
+  },
+  {
+    "id": "memory-leak-001",
+    "title": "The server is getting slower over time",
+    "difficulty": "intermediate",
+    "framework": "generic",
+    "hint": "Look at the memory numbers and notice the pattern over time.",
+    "log_text": "2026-06-12 08:00:00 INFO Server started. Memory usage: 120MB\n2026-06-12 09:00:00 INFO Memory usage: 180MB\n2026-06-12 10:00:00 INFO Memory usage: 260MB\n2026-06-12 11:00:00 WARNING Memory usage: 380MB\n2026-06-12 12:00:00 WARNING Memory usage: 520MB\n2026-06-12 13:00:00 WARNING Memory usage: 680MB\n2026-06-12 13:30:00 ERROR Request timeout: response took 45 seconds\n2026-06-12 13:31:00 ERROR Request timeout: response took 52 seconds\n2026-06-12 14:00:00 WARNING Memory usage: 890MB\n2026-06-12 14:15:00 ERROR Out of memory: killed process\n2026-06-12 14:15:01 CRITICAL Server crashed",
+    "root_cause": "A memory leak is causing memory usage to grow steadily until the server runs out of RAM and crashes.",
+    "explanation": "Memory usage grew from 120MB to 890MB over 6 hours without ever going down. This is a classic memory leak — something in the code is allocating memory and never releasing it. As memory fills up, the operating system starts swapping to disk, which is why requests start timing out at 13:30. Eventually the OS kills the process to protect the rest of the system.",
+    "fix_steps": [
+      "Restart the server immediately to restore service.",
+      "Profile memory usage in development to find what is not being released — common culprits are unclosed database connections, event listeners that are never removed, and growing caches with no eviction policy.",
+      "Add memory usage monitoring with alerts at 70% and 85% so you have time to act.",
+      "Consider setting a maximum memory limit on the process so it restarts automatically instead of crashing the whole server."
+    ],
+    "learn_more": [
+      {"term": "Memory leak", "explanation": "When a program keeps allocating memory but never frees it. Like filling a bathtub with no drain — eventually it overflows."},
+      {"term": "Swap memory", "explanation": "When RAM is full, the OS starts using disk space as slow backup RAM. This makes everything much slower, which is why requests started timing out."},
+      {"term": "Out of memory (OOM) killer", "explanation": "A Linux feature that kills processes when the system runs out of memory, to protect the operating system itself."}
+    ]
+  },
+  {
+    "id": "connection-pool-001",
+    "title": "The app works fine at first but breaks under load",
+    "difficulty": "intermediate",
+    "framework": "django",
+    "hint": "Look at when the errors start and how many requests are happening at the same time.",
+    "log_text": "2026-06-13 14:00:00 INFO Django application started\n2026-06-13 14:00:01 INFO Database connection pool initialized with 5 connections\n2026-06-13 14:00:10 INFO Request: GET /api/users - 200 OK (45ms)\n2026-06-13 14:00:11 INFO Request: GET /api/products - 200 OK (38ms)\n2026-06-13 14:05:00 INFO Traffic spike detected: 50 concurrent requests\n2026-06-13 14:05:01 ERROR django.db.utils.OperationalError: could not obtain database connection within timeout\n2026-06-13 14:05:02 ERROR django.db.utils.OperationalError: could not obtain database connection within timeout\n2026-06-13 14:05:03 ERROR django.db.utils.OperationalError: could not obtain database connection within timeout\n2026-06-13 14:05:04 WARNING 45 requests waiting for database connection\n2026-06-13 14:05:10 ERROR Request: POST /api/orders - 500 Internal Server Error\n2026-06-13 14:05:11 ERROR Request: POST /api/orders - 500 Internal Server Error\n2026-06-13 14:06:00 INFO Traffic returned to normal: 5 concurrent requests\n2026-06-13 14:06:01 INFO Request: GET /api/users - 200 OK (42ms)",
+    "root_cause": "The database connection pool is too small — 5 connections cannot handle 50 concurrent requests.",
+    "explanation": "Everything worked fine until a traffic spike brought 50 simultaneous requests, but the connection pool only had 5 database connections. The 45 extra requests had to wait, and many timed out waiting for a free connection. As soon as traffic dropped back to normal, everything recovered immediately — which confirms it is a pool size issue, not a database problem.",
+    "fix_steps": [
+      "Increase the database connection pool size in your Django settings (CONN_MAX_AGE and the database pool settings).",
+      "A good starting point is 2x your expected peak concurrent users.",
+      "Add a connection pool monitoring metric so you can see when the pool is being exhausted.",
+      "Consider using PgBouncer (a connection pooler) in front of PostgreSQL to handle many more connections efficiently."
+    ],
+    "learn_more": [
+      {"term": "Connection pool", "explanation": "A fixed set of database connections that your app reuses. Creating a new connection for every request is slow, so apps keep a pool ready. But if the pool is too small, requests have to wait."},
+      {"term": "OperationalError", "explanation": "A Django error meaning the database operation failed. 'Could not obtain connection within timeout' specifically means the pool was exhausted."},
+      {"term": "PgBouncer", "explanation": "A lightweight proxy that sits between your app and PostgreSQL, allowing thousands of app connections to share a smaller number of real database connections."}
+    ]
+  }
+]
