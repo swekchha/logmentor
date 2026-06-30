@@ -4,7 +4,7 @@ AI-powered log analysis tool for junior developers and CS students.
 
 Paste or upload any log file and get a plain-English diagnosis, step-by-step fix guide, and an interactive chat to ask follow-up questions. Includes a debug challenge mode where you diagnose real log scenarios and get graded feedback.
 
-**LogMentor Overview**
+## LogMentor Overview
 
 <img width="1903" height="910" alt="image" src="https://github.com/user-attachments/assets/604a409d-db8f-4543-beaf-cb1fcb65808d" />
 
@@ -20,8 +20,9 @@ Paste or upload any log file and get a plain-English diagnosis, step-by-step fix
 
 <img width="1911" height="448" alt="image" src="https://github.com/user-attachments/assets/9d073f54-68b8-454b-9ac3-88aca432bc1e" />
 
-<img width="1227" height="903" alt="image" src="https://github.com/user-attachments/assets/16af6552-2077-4911-b301-5936d906c28e" />
+<img width="1262" height="807" alt="image" src="https://github.com/user-attachments/assets/edfe1140-99fc-452e-9360-163fce0f25c3" />
 
+<img width="1227" height="903" alt="image" src="https://github.com/user-attachments/assets/16af6552-2077-4911-b301-5936d906c28e" />
 
 
 
