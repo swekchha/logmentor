@@ -4,7 +4,32 @@ AI-powered log analysis tool for junior developers and CS students.
 
 Paste or upload any log file and get a plain-English diagnosis, step-by-step fix guide, and an interactive chat to ask follow-up questions. Includes a debug challenge mode where you diagnose real log scenarios and get graded feedback.
 
-![LogMentor screenshot](screenshot.png)
+**LogMentor Overview**
+
+<img width="1903" height="910" alt="image" src="https://github.com/user-attachments/assets/604a409d-db8f-4543-beaf-cb1fcb65808d" />
+
+<img width="659" height="881" alt="image" src="https://github.com/user-attachments/assets/e5eee189-2f1d-4e7a-b09c-92d9edae1091" />
+
+<img width="1899" height="903" alt="image" src="https://github.com/user-attachments/assets/0aeb12d6-e9b8-4690-9f6f-cc0abc3cd493" />
+
+<img width="1250" height="900" alt="image" src="https://github.com/user-attachments/assets/b70188d8-9290-4fa7-a77b-de16aa3a05db" />
+
+<img width="1224" height="779" alt="image" src="https://github.com/user-attachments/assets/157c2a1f-7318-480e-96e2-f963e03e8fdb" />
+
+<img width="1206" height="612" alt="image" src="https://github.com/user-attachments/assets/b718f6e7-7ac5-406e-a7ab-acaa51f7b7c2" />
+
+<img width="1911" height="448" alt="image" src="https://github.com/user-attachments/assets/9d073f54-68b8-454b-9ac3-88aca432bc1e" />
+
+<img width="1227" height="903" alt="image" src="https://github.com/user-attachments/assets/16af6552-2077-4911-b301-5936d906c28e" />
+
+
+
+
+
+
+
+
+
 
 ## Features
 
