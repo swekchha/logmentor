@@ -1,0 +1,8 @@
+﻿backend/.env
+.venv/
+__pycache__/
+*.pyc
+.next/
+node_modules/
+*.egg-info/
+.DS_Store
