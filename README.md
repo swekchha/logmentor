@@ -25,6 +25,9 @@ Paste or upload any log file and get a plain-English diagnosis, step-by-step fix
 
 <img width="1227" height="903" alt="image" src="https://github.com/user-attachments/assets/16af6552-2077-4911-b301-5936d906c28e" />
 
+<img width="1326" height="464" alt="image" src="https://github.com/user-attachments/assets/fb604239-8ff3-400a-95f8-c4b46ee16021" />
+
+
 
 
 
