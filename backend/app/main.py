@@ -3,12 +3,22 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional
 
 load_dotenv()
 
 from .analyzer import summarize_entries, truncate_log_for_llm
+from .database import (
+    init_db,
+    make_log_hash,
+    get_cached_diagnosis,
+    save_diagnosis,
+    get_session_history,
+    delete_session_history,
+)
 from .llm import (
     answer_follow_up,
     diagnose_log,
@@ -32,12 +42,12 @@ from .schemas import (
 app = FastAPI(
     title="LogMentor API",
     description="AI-powered log analysis and debugging education for junior developers.",
-    version="2.0.0",
+    version="3.0.0",
 )
 
-# CORS: read allowed origins from environment variable.
-# In development: ALLOWED_ORIGINS=http://localhost:3000
-# In production: ALLOWED_ORIGINS=https://yourdomain.com
+# Initialize database on startup
+init_db()
+
 _raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
 allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
@@ -49,7 +59,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Challenge scenarios (loaded once at startup) ───────────────────────────────
+# ── Challenge scenarios ────────────────────────────────────────────────────────
 
 _SCENARIOS_PATH = Path(__file__).with_name("challenge_scenarios.json")
 
@@ -69,31 +79,52 @@ def root():
     return {
         "status": "ok",
         "service": "LogMentor API",
-        "version": "2.0.0",
+        "version": "3.0.0",
     }
 
 
 # ── Main log analysis ─────────────────────────────────────────────────────────
 
 @app.post("/diagnose", response_model=AnalysisResponse)
-def diagnose(request: LogRequest):
+def diagnose(
+    request: LogRequest,
+    x_session_id: Optional[str] = Header(None),
+):
     """
     Full log analysis: parse → summarise → AI diagnosis.
-    Uses in-memory cache — identical error patterns return instantly.
+    Checks database cache first. Saves result to DB with session ID.
     """
     if not request.log_text.strip():
         raise HTTPException(status_code=400, detail="log_text cannot be empty.")
+
+    session_id = x_session_id or "anonymous"
 
     try:
         entries = parse_log_text(request.log_text)
         summary = summarize_entries(entries)
         truncated = truncate_log_for_llm(request.log_text)
-        diagnosis = diagnose_log(
-            log_text=request.log_text,
-            context=request.context,
-            summary=summary.model_dump(),
-            truncated_log=truncated,
-        )
+
+        # Check database cache first
+        log_hash = make_log_hash(request.log_text)
+        cached = get_cached_diagnosis(log_hash)
+
+        if cached:
+            diagnosis = DiagnosisResponse(**cached)
+        else:
+            diagnosis = diagnose_log(
+                log_text=request.log_text,
+                context=request.context,
+                summary=summary.model_dump(),
+                truncated_log=truncated,
+            )
+            # Save to database
+            save_diagnosis(
+                session_id=session_id,
+                log_hash=log_hash,
+                log_text=request.log_text,
+                diagnosis=diagnosis.model_dump(),
+            )
+
         return AnalysisResponse(summary=summary, diagnosis=diagnosis)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -103,9 +134,6 @@ def diagnose(request: LogRequest):
 
 @app.post("/explain-issue", response_model=DiagnosisResponse)
 def explain_issue(request: IssueExplainRequest):
-    """
-    Deep explanation of one specific issue the user clicked on.
-    """
     if not request.log_text.strip():
         raise HTTPException(status_code=400, detail="log_text cannot be empty.")
     if not request.selected_issue.strip():
@@ -129,10 +157,6 @@ def explain_issue(request: IssueExplainRequest):
 
 @app.post("/follow-up")
 def follow_up(request: FollowUpRequest):
-    """
-    Answer a follow-up question about the log.
-    Sends compressed context to the LLM to save tokens.
-    """
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="question cannot be empty.")
 
@@ -150,22 +174,33 @@ def follow_up(request: FollowUpRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ── Debug Challenge Mode ──────────────────────────────────────────────────────
+# ── Session history ───────────────────────────────────────────────────────────
+
+@app.get("/history")
+def get_history(x_session_id: Optional[str] = Header(None)):
+    """Get past diagnoses for this session."""
+    session_id = x_session_id or "anonymous"
+    history = get_session_history(session_id)
+    return {"history": history}
+
+
+@app.delete("/history")
+def clear_history(x_session_id: Optional[str] = Header(None)):
+    """Clear all diagnoses for this session."""
+    session_id = x_session_id or "anonymous"
+    delete_session_history(session_id)
+    return {"message": "History cleared"}
+
+
+# ── Challenge Mode ────────────────────────────────────────────────────────────
 
 @app.get("/challenge/scenarios", response_model=list[ChallengeScenario])
 def list_scenarios(difficulty: str | None = None, framework: str | None = None):
-    """
-    List available challenge scenarios.
-    Optional filters: difficulty (beginner/intermediate/advanced), framework (django/node/generic)
-    """
     scenarios = _SCENARIOS
-
     if difficulty:
         scenarios = [s for s in scenarios if s.get("difficulty") == difficulty.lower()]
-
     if framework:
         scenarios = [s for s in scenarios if s.get("framework") == framework.lower()]
-
     return [
         ChallengeScenario(
             id=s["id"],
@@ -181,17 +216,12 @@ def list_scenarios(difficulty: str | None = None, framework: str | None = None):
 
 @app.post("/challenge/attempt", response_model=ChallengeResult)
 def attempt_challenge(request: ChallengeAttemptRequest):
-    """
-    Grade a student's diagnosis attempt against the correct answer.
-    Returns personalised feedback and a score.
-    """
     scenario = _SCENARIOS_BY_ID.get(request.scenario_id)
     if not scenario:
         raise HTTPException(
             status_code=404,
             detail=f"Scenario '{request.scenario_id}' not found."
         )
-
     if not request.user_answer.strip():
         raise HTTPException(status_code=400, detail="user_answer cannot be empty.")
 

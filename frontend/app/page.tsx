@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 
-// ── Types matching backend schemas ─────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────
 
 interface LearnMoreItem { term: string; explanation: string; }
 interface IssueItem { message: string; count: number; }
@@ -60,6 +60,15 @@ interface ChatMessage {
   text: string;
 }
 
+// ── History types ──────────────────────────────────────────────────────────
+
+interface HistoryItem {
+  id: number;
+  log_preview: string;
+  diagnosis: DiagnosisResponse;
+  created_at: string;
+}
+
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -84,12 +93,34 @@ const DIFF_COLORS: Record<string, string> = {
   advanced:     "text-red-400 bg-red-950 border-red-800",
 };
 
+// ── Session ID ─────────────────────────────────────────────────────────────
+// Generated once, stored in localStorage, sent with every request.
+// No login needed — anonymous session that persists across visits.
+
+function getOrCreateSessionId(): string {
+  const key = "logmentor_session_id";
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-async function apiFetch<T>(path: string, body?: unknown): Promise<T> {
+async function apiFetch<T>(
+  path: string,
+  body?: unknown,
+  method?: string,
+): Promise<T> {
+  const sessionId = getOrCreateSessionId();
   const res = await fetch(`${API}${path}`, {
-    method: body !== undefined ? "POST" : "GET",
-    headers: { "Content-Type": "application/json" },
+    method: method ?? (body !== undefined ? "POST" : "GET"),
+    headers: {
+      "Content-Type": "application/json",
+      "x-session-id": sessionId,       // sent with every request
+    },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
@@ -106,6 +137,20 @@ function readFileAsText(file: File): Promise<string> {
     reader.onerror = () => reject(new Error("Failed to read file"));
     reader.readAsText(file);
   });
+}
+
+function timeAgo(dateStr: string): string {
+  try {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  } catch {
+    return "";
+  }
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────
@@ -153,7 +198,7 @@ function FileDropZone({ onFileLoaded }: { onFileLoaded: (text: string, filename:
     const allowed = [".log", ".txt", ".json", ".out", ".text"];
     const ext = "." + file.name.split(".").pop()?.toLowerCase();
     if (!allowed.includes(ext) && !file.type.startsWith("text/")) {
-      setFileError(`Unsupported file type. Use .log, .txt, .json, or .out`);
+      setFileError("Unsupported file type. Use .log, .txt, .json, or .out");
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -211,9 +256,7 @@ function FileDropZone({ onFileLoaded }: { onFileLoaded: (text: string, filename:
           <p className="text-xs text-zinc-600">.log · .txt · .json · .out — max 5 MB</p>
         </div>
       </div>
-      {fileError && (
-        <p className="mt-2 text-xs text-red-400">{fileError}</p>
-      )}
+      {fileError && <p className="mt-2 text-xs text-red-400">{fileError}</p>}
     </div>
   );
 }
@@ -412,11 +455,9 @@ function ChatPanel({
         )}
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div
-              className={`max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
-                m.role === "user" ? "bg-violet-900 text-white" : "bg-zinc-800 text-zinc-200"
-              }`}
-            >
+            <div className={`max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
+              m.role === "user" ? "bg-violet-900 text-white" : "bg-zinc-800 text-zinc-200"
+            }`}>
               {m.text}
             </div>
           </div>
@@ -445,6 +486,69 @@ function ChatPanel({
           Send
         </button>
       </div>
+    </div>
+  );
+}
+
+// ── History Panel ──────────────────────────────────────────────────────────
+// Shows past diagnoses for this browser session.
+// Each item can be clicked to re-load the diagnosis without a new API call.
+
+function HistoryPanel({
+  history,
+  onSelect,
+  onClear,
+  loading,
+}: {
+  history: HistoryItem[];
+  onSelect: (item: HistoryItem) => void;
+  onClear: () => void;
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="flex justify-center py-12"><Spinner /></div>
+    );
+  }
+
+  if (history.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-zinc-500 text-sm">No past diagnoses yet.</p>
+        <p className="text-zinc-600 text-xs mt-1">Analyze a log to see your history here.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-zinc-500">{history.length} past diagnosis{history.length > 1 ? "es" : ""} from this browser</p>
+        <button
+          onClick={onClear}
+          className="text-xs text-zinc-600 hover:text-red-400 transition-colors"
+        >
+          Clear history
+        </button>
+      </div>
+
+      {history.map((item) => (
+        <button
+          key={item.id}
+          onClick={() => onSelect(item)}
+          className="w-full text-left rounded-xl border border-zinc-800 bg-zinc-900 hover:border-zinc-600 p-4 transition-colors group"
+        >
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <p className="text-violet-300 text-sm font-medium group-hover:text-violet-200 transition-colors line-clamp-1">
+              {item.diagnosis.root_cause}
+            </p>
+            <span className="text-zinc-600 text-xs shrink-0">{timeAgo(item.created_at)}</span>
+          </div>
+          <p className="text-zinc-500 text-xs font-mono line-clamp-2 leading-relaxed">
+            {item.log_preview}
+          </p>
+        </button>
+      ))}
     </div>
   );
 }
@@ -655,12 +759,13 @@ function ChallengeMode() {
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 
-type Tab = "analyze" | "challenge";
+type Tab = "analyze" | "challenge" | "history";
 type ResultTab = "diagnosis" | "summary" | "chat";
 
 export default function Page() {
   const [tab, setTab] = useState<Tab>("analyze");
 
+  // Analyze state
   const [logText, setLogText] = useState("");
   const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
   const [context, setContext] = useState("");
@@ -668,10 +773,63 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResponse | null>(null);
   const [resultTab, setResultTab] = useState<ResultTab>("diagnosis");
-
   const [selectedIssue, setSelectedIssue] = useState<string | null>(null);
   const [issueLoading, setIssueLoading] = useState(false);
   const [issueDiagnosis, setIssueDiagnosis] = useState<DiagnosisResponse | null>(null);
+
+  // History state
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  // Load history when tab is opened
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const data = await apiFetch<{ history: HistoryItem[] }>("/history");
+      setHistory(data.history);
+    } catch {
+      setHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "history") loadHistory();
+  }, [tab, loadHistory]);
+
+  async function clearHistory() {
+    try {
+      await apiFetch("/history", undefined, "DELETE");
+      setHistory([]);
+    } catch {
+      // silent
+    }
+  }
+
+  // Load a past diagnosis without re-calling API
+  function loadFromHistory(item: HistoryItem) {
+    setResult({
+      summary: {
+        total_lines: 0,
+        error_count: 0,
+        warning_count: 0,
+        info_count: 0,
+        debug_count: 0,
+        critical_count: 0,
+        risk_level: "Unknown",
+        primary_issue: null,
+        most_common_day: null,
+        problem_issues: [],
+        context_events: [],
+        categories: [],
+      },
+      diagnosis: item.diagnosis,
+    });
+    setLogText(item.log_preview);
+    setResultTab("diagnosis");
+    setTab("analyze");
+  }
 
   function handleFileLoaded(text: string, filename: string) {
     setLogText(text);
@@ -754,7 +912,7 @@ export default function Page() {
         </div>
 
         <nav className="flex gap-1 bg-zinc-900 rounded-lg p-1 border border-zinc-800">
-          {(["analyze", "challenge"] as Tab[]).map((t) => (
+          {(["analyze", "history", "challenge"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -762,24 +920,38 @@ export default function Page() {
                 tab === t ? "bg-violet-700 text-white" : "text-zinc-400 hover:text-zinc-200"
               }`}
             >
-              {t === "analyze" ? "Analyze Log" : "Challenges"}
+              {t === "analyze" ? "Analyze" : t === "history" ? "History" : "Challenges"}
             </button>
           ))}
         </nav>
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8">
-        {tab === "challenge" ? (
-          <ChallengeMode />
-        ) : (
-          <div className="space-y-6">
-            {/* Input area */}
-            <div className="space-y-3">
+        {/* History tab */}
+        {tab === "history" && (
+          <div className="space-y-4">
+            <h2 className="text-white font-semibold text-lg">Your past diagnoses</h2>
+            <p className="text-zinc-500 text-sm -mt-2">
+              Saved from this browser. Click any to reload the diagnosis instantly.
+            </p>
+            <HistoryPanel
+              history={history}
+              onSelect={loadFromHistory}
+              onClear={clearHistory}
+              loading={historyLoading}
+            />
+          </div>
+        )}
 
-              {/* File upload */}
+        {/* Challenge tab */}
+        {tab === "challenge" && <ChallengeMode />}
+
+        {/* Analyze tab */}
+        {tab === "analyze" && (
+          <div className="space-y-6">
+            <div className="space-y-3">
               <FileDropZone onFileLoaded={handleFileLoaded} />
 
-              {/* Filename pill shown after upload */}
               {uploadedFilename && (
                 <div className="flex items-center gap-2 text-xs text-zinc-400 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 w-fit">
                   <svg className="w-3.5 h-3.5 text-violet-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -789,21 +961,18 @@ export default function Page() {
                   <button
                     onClick={() => { setUploadedFilename(null); setLogText(""); }}
                     className="ml-1 text-zinc-600 hover:text-zinc-300 transition-colors"
-                    aria-label="Remove file"
                   >
                     ✕
                   </button>
                 </div>
               )}
 
-              {/* Divider */}
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-zinc-800" />
                 <span className="text-xs text-zinc-600">or paste directly</span>
                 <div className="flex-1 h-px bg-zinc-800" />
               </div>
 
-              {/* Log textarea */}
               <div>
                 <label className="block text-xs uppercase tracking-widest text-zinc-500 font-mono mb-2">
                   Log text
@@ -817,7 +986,6 @@ export default function Page() {
                 />
               </div>
 
-              {/* Context */}
               <div>
                 <label className="block text-xs uppercase tracking-widest text-zinc-500 font-mono mb-2">
                   Context <span className="normal-case text-zinc-600">(optional)</span>
@@ -830,7 +998,6 @@ export default function Page() {
                 />
               </div>
 
-              {/* Actions */}
               <div className="flex items-center gap-3">
                 <button
                   onClick={analyze}
@@ -858,7 +1025,6 @@ export default function Page() {
               )}
             </div>
 
-            {/* Results */}
             {result && (
               <div className="space-y-4">
                 {selectedIssue && (
