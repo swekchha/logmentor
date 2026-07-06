@@ -6,7 +6,8 @@ Paste or upload any log file and get a plain-English diagnosis, step-by-step fix
 
 ## LogMentor Overview
 
-<img width="1903" height="910" alt="image" src="https://github.com/user-attachments/assets/604a409d-db8f-4543-beaf-cb1fcb65808d" />
+<img width="1899" height="693" alt="image" src="https://github.com/user-attachments/assets/e434d94d-895c-4fd4-9c39-d688c930ccb4" />
+
 
 <img width="659" height="881" alt="image" src="https://github.com/user-attachments/assets/e5eee189-2f1d-4e7a-b09c-92d9edae1091" />
 
