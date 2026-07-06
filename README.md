@@ -2,12 +2,26 @@
 
 AI-powered log analysis tool for junior developers and CS students.
 
-Paste or upload any log file and get a plain-English diagnosis, step-by-step fix guide, and an interactive chat to ask follow-up questions. Includes a debug challenge mode where you diagnose real log scenarios and get graded feedback.
+Paste or upload any log file and get a plain-English diagnosis, step-by-step fix guide, and an interactive chat to ask follow-up questions. Includes a debug challenge mode where you diagnose real log scenarios and get graded feedback. Your past diagnoses are saved automatically so you can revisit them anytime.
+
+---
+
+## Features
+
+- Analyzes logs in any format (timestamp, JSON, Django, Node.js, bracket-style)
+- AI diagnosis with root cause, fix steps, and glossary of technical terms
+- Click any issue to drill down into a focused explanation
+- Follow-up chat — ask questions about your specific log
+- **Session history** — past diagnoses saved to database, accessible across visits from the same browser
+- **Smart caching** — same log pattern returns instantly without a new API call
+- Debug challenge mode with beginner and intermediate scenarios
+- File upload (drag & drop or browse) — .log, .txt, .json, .out
+
+---
 
 ## LogMentor Overview
 
 <img width="1899" height="693" alt="image" src="https://github.com/user-attachments/assets/e434d94d-895c-4fd4-9c39-d688c930ccb4" />
-
 
 <img width="659" height="881" alt="image" src="https://github.com/user-attachments/assets/e5eee189-2f1d-4e7a-b09c-92d9edae1091" />
 
@@ -27,31 +41,24 @@ Paste or upload any log file and get a plain-English diagnosis, step-by-step fix
 
 <img width="1326" height="464" alt="image" src="https://github.com/user-attachments/assets/fb604239-8ff3-400a-95f8-c4b46ee16021" />
 
+---
 
-
-
-
-
-
-
-
-
-## Features
-
-- Analyzes logs in any format (timestamp, JSON, Django, Node.js, bracket-style)
-- AI diagnosis with root cause, fix steps, and glossary of technical terms
-- Click any issue to drill down into a focused explanation
-- Follow-up chat — ask questions about your specific log
-- Debug challenge mode with beginner and intermediate scenarios
-- File upload (drag & drop or browse) — .log, .txt, .json, .out
-
-## Tech stack
+## Tech Stack
 
 - **Frontend**: Next.js 16, React 19, Tailwind CSS 4, TypeScript
 - **Backend**: FastAPI, Python, OpenAI GPT-4o-mini
-- **Key engineering**: smart log truncation before LLM (saves ~70% tokens), cache keyed on error fingerprints, multi-format log parser, compressed context on follow-up turns
+- **Database**: SQLite — persists diagnoses per anonymous session
+- **Testing**: pytest — 8 tests covering all endpoints
+- **Key engineering**:
+  - Smart log truncation before LLM (saves ~70% tokens)
+  - Cache keyed on error fingerprints + surrounding INFO context — same log pattern returns instantly, no API call
+  - Anonymous session IDs via browser localStorage — no login needed, history persists across visits
+  - Multi-format log parser (timestamp, JSON, Django, Node.js, bracket-style, stack traces)
+  - Compressed context on follow-up chat turns
 
-## Running locally
+---
+
+## Running Locally
 
 ### Backend
 ```bash
@@ -61,7 +68,7 @@ python -m venv .venv
 source .venv/bin/activate     # Mac/Linux
 pip install -r requirements.txt
 cp .env.example .env          # then add your OpenAI key
-uvicorn main:app --reload --port 8000
+uvicorn backend.app.main:app --reload --port 8000
 ```
 
 ### Frontend
@@ -70,6 +77,11 @@ cd frontend
 npm install
 echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
 npm run dev
+```
+
+### Tests
+```bash
+.venv\Scripts\python.exe -m pytest backend/app/tests/ -v
 ```
 
 Open http://localhost:3000
